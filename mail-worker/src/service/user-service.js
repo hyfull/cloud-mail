@@ -80,6 +80,14 @@ const userService = {
 		return userId;
 	},
 
+	async deleteInsertedUser(c, userId) {
+		try {
+			await orm(c).delete(user).where(eq(user.userId, userId)).run();
+		} catch (error) {
+			console.error('User rollback failed', { userId, error: error.message });
+		}
+	},
+
 	selectByEmailIncludeDel(c, email) {
 		return orm(c).select().from(user).where(sql`${user.email} COLLATE NOCASE = ${email}`).get();
 	},
@@ -359,9 +367,13 @@ const userService = {
 
 		const userId = await userService.insert(c, { email, password: hash, salt, type });
 
-		await userService.updateUserInfo(c, userId, true);
-
-		await accountService.insert(c, { userId: userId, email, type, name: emailUtils.getName(email) });
+		try {
+			await userService.updateUserInfo(c, userId, true);
+			await accountService.insert(c, { userId: userId, email, type, name: emailUtils.getName(email) });
+		} catch (error) {
+			await userService.deleteInsertedUser(c, userId);
+			throw error;
+		}
 	},
 
 	async resetDaySendCount(c) {

@@ -14,6 +14,7 @@ import { isDel, roleConst } from '../const/entity-const';
 import email from '../entity/email';
 import userService from './user-service';
 import KvConst from '../const/kv-const';
+import { ensureEmailRoutes, rollbackEmailRouteChanges } from './email-routing-service';
 
 const publicService = {
 
@@ -156,6 +157,26 @@ const publicService = {
 			} else {
 				throw e
 			}
+		}
+
+		const routeChanges = [];
+		try {
+			await ensureEmailRoutes(c, list.map(row => row.email), routeChanges);
+		} catch (error) {
+			try {
+				await c.env.db.batch(list.flatMap(row => [
+					c.env.db.prepare('DELETE FROM account WHERE email = ? COLLATE NOCASE').bind(row.email),
+					c.env.db.prepare('DELETE FROM user WHERE email = ? COLLATE NOCASE').bind(row.email),
+				]));
+			} catch (cleanupError) {
+				console.error('Imported mailbox rollback failed', { count: list.length, error: cleanupError.message });
+			}
+			try {
+				await rollbackEmailRouteChanges(c, routeChanges);
+			} catch (rollbackError) {
+				console.error('Imported mailbox routing rollback failed', { count: routeChanges.length, error: rollbackError.message });
+			}
+			throw error;
 		}
 
 	},

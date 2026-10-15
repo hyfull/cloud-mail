@@ -29,6 +29,10 @@ jobs:
       CLOUDFLARE_EMAIL: ${{ secrets.CF_EMAIL || vars.CF_EMAIL || false }}
       ANALYSIS_CACHE: ${{ secrets.ANALYSIS_CACHE || vars.ANALYSIS_CACHE || false }}
       IDENTITY_MAIL_DOMAIN: ${{ vars.IDENTITY_MAIL_DOMAIN || '' }}
+      EMAIL_ROUTING_DOMAIN: ${{ vars.EMAIL_ROUTING_DOMAIN || 'email.huayifull.com' }}
+      EMAIL_ROUTING_ZONE_ID: ${{ vars.EMAIL_ROUTING_ZONE_ID || 'ab0a44fa1ff0c6059fddb8a8d4221bc9' }}
+      EMAIL_ROUTING_WORKER: ${{ vars.EMAIL_ROUTING_WORKER || 'cloud-mail' }}
+      EMAIL_ROUTING_API_TOKEN: ${{ secrets.EMAIL_ROUTING_API_TOKEN || '' }}
       IDENTITY_SYNC_SECRET: ${{ secrets.IDENTITY_SYNC_SECRET || '' }}
       STORE_MAILBOX_SECRET: ${{ secrets.STORE_MAILBOX_SECRET || '' }}
       STORE_MAILBOX_OWNER: ${{ vars.STORE_MAILBOX_OWNER || 'shein@huayimail.com' }}
@@ -106,6 +110,11 @@ jobs:
           if [ -z "$CUSTOM_DOMAIN" ]; then
             echo "::warning:: CUSTOM_DOMAIN variable is not set."
           fi
+
+          if [ -n "$EMAIL_ROUTING_DOMAIN" ] && { [ -z "$EMAIL_ROUTING_ZONE_ID" ] || [ -z "$EMAIL_ROUTING_WORKER" ] || [ -z "$EMAIL_ROUTING_API_TOKEN" ]; }; then
+            echo "❌ Email routing synchronization variables or secret are incomplete."
+            exit 1
+          fi
           
           CONFIG_FILE="wrangler-action.toml"
           
@@ -140,6 +149,9 @@ jobs:
           sed -i "s|\${ANALYSIS_CACHE}|${ANALYSIS_CACHE}|g" "$CONFIG_FILE"
           sed -i "s|\${AI_MODEL}|${AI_MODEL}|g" "$CONFIG_FILE"
           sed -i "s|\${IDENTITY_MAIL_DOMAIN}|${IDENTITY_MAIL_DOMAIN}|g" "$CONFIG_FILE"
+          sed -i "s|\${EMAIL_ROUTING_DOMAIN}|${EMAIL_ROUTING_DOMAIN}|g" "$CONFIG_FILE"
+          sed -i "s|\${EMAIL_ROUTING_ZONE_ID}|${EMAIL_ROUTING_ZONE_ID}|g" "$CONFIG_FILE"
+          sed -i "s|\${EMAIL_ROUTING_WORKER}|${EMAIL_ROUTING_WORKER}|g" "$CONFIG_FILE"
           sed -i "s|\${OIDC_ISSUER_URL}|${OIDC_ISSUER_URL}|g" "$CONFIG_FILE"
           sed -i "s|\${OIDC_CLIENT_ID}|${OIDC_CLIENT_ID}|g" "$CONFIG_FILE"
           sed -i "s|\${OIDC_REDIRECT_URI}|${OIDC_REDIRECT_URI}|g" "$CONFIG_FILE"
@@ -260,6 +272,9 @@ jobs:
           printf '%s' "$IDENTITY_SYNC_SECRET" | pnpm wrangler secret put IDENTITY_SYNC_SECRET -c wrangler-action.toml
           if [ -n "$STORE_MAILBOX_SECRET" ]; then
             printf '%s' "$STORE_MAILBOX_SECRET" | pnpm wrangler secret put STORE_MAILBOX_SECRET -c wrangler-action.toml
+          fi
+          if [ -n "$EMAIL_ROUTING_DOMAIN" ]; then
+            printf '%s' "$EMAIL_ROUTING_API_TOKEN" | pnpm wrangler secret put EMAIL_ROUTING_API_TOKEN -c wrangler-action.toml
           fi
           if [ -z "$OIDC_CLIENT_SECRET" ]; then
             echo "❌ OIDC_CLIENT_SECRET is required."

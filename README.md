@@ -49,6 +49,15 @@ Cloudflare Worker 需要配置：
 `identity_mail_domain` 下分配邮箱，例如“张三”分配为 `zhangsan@huayimail.com`；发生重名时依次
 追加数字 `2`、`3`。邮箱首次分配后保持稳定，不随姓名变化自动修改。
 
+## 子域邮箱路由同步
+
+`email.huayifull.com` 使用 Cloudflare Email Routing 子域收件。Cloudflare 不支持子域 catch-all，
+因此系统会在创建、恢复和物理删除邮箱时同步维护“具体地址 → `cloud-mail` Worker”的精确路由；
+`huayimail.com` 继续使用原有 catch-all，不受影响。批量导入或同步失败时会撤销本次数据库写入和已完成的路由变更。
+
+部署变量为 `EMAIL_ROUTING_DOMAIN`、`EMAIL_ROUTING_ZONE_ID`、`EMAIL_ROUTING_WORKER`，运行时 Secret 为
+`EMAIL_ROUTING_API_TOKEN`。令牌只需授予目标区域的 `Email Routing Rules Write` 权限。
+
 ## 店铺邮箱自动开通
 
 OpsPilot 通过 `POST /api/internal/store-mailboxes` 提交 `store_id`（SHEIN 数字店铺 ID）和 `name`。

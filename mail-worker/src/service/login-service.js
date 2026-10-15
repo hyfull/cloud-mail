@@ -130,7 +130,12 @@ const loginService = {
 
 		const userId = await userService.insert(c, { email, regKeyId,password: hash, salt, type: type || defType });
 
-		await accountService.insert(c, { userId: userId, email, name: emailUtils.getName(email) });
+		try {
+			await accountService.insert(c, { userId: userId, email, name: emailUtils.getName(email) });
+		} catch (error) {
+			await userService.deleteInsertedUser(c, userId);
+			throw error;
+		}
 
 		await userService.updateUserInfo(c, userId, true);
 

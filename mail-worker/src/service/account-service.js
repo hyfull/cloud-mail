@@ -12,6 +12,21 @@ import turnstileService from './turnstile-service';
 import roleService from './role-service';
 import { t } from '../i18n/i18n';
 import verifyRecordService from './verify-record-service';
+import {
+	ensureEmailRoute,
+	ensureEmailRoutes,
+	removeEmailRoute,
+	removeEmailRoutes,
+	rollbackEmailRouteChanges,
+} from './email-routing-service';
+
+async function rollbackRouting(c, changes, operation) {
+	try {
+		await rollbackEmailRouteChanges(c, changes);
+	} catch (error) {
+		console.error('Cloudflare email routing rollback failed', { operation, error: error.message });
+	}
+}
 
 const accountService = {
 
@@ -96,7 +111,7 @@ const accountService = {
 		}
 
 
-		accountRow = await orm(c).insert(account).values({ email: email, userId: userId, name: emailUtils.getName(email) }).returning().get();
+		accountRow = await this.insert(c, { email: email, userId: userId, name: emailUtils.getName(email) });
 
 		if (addEmailVerify === settingConst.addEmailVerify.COUNT && !addVerifyOpen) {
 			const row = await verifyRecordService.increaseAddCount(c);
@@ -188,16 +203,49 @@ const accountService = {
 	},
 
 	async insert(c, params) {
-		await orm(c).insert(account).values({ ...params }).returning();
+		const accountRow = await orm(c).insert(account).values({ ...params }).returning().get();
+		try {
+			await ensureEmailRoute(c, accountRow.email);
+		} catch (error) {
+			try {
+				await orm(c).delete(account).where(eq(account.accountId, accountRow.accountId)).run();
+			} catch (cleanupError) {
+				console.error('Mailbox rollback failed', { accountId: accountRow.accountId, error: cleanupError.message });
+			}
+			throw error;
+		}
+		return accountRow;
 	},
 
 	async insertList(c, list) {
-		await orm(c).insert(account).values(list).run();
+		const accountRows = await orm(c).insert(account).values(list).returning().all();
+		const changes = [];
+		try {
+			await ensureEmailRoutes(c, accountRows.map(row => row.email), changes);
+		} catch (error) {
+			try {
+				await orm(c).delete(account).where(inArray(account.accountId, accountRows.map(row => row.accountId))).run();
+			} catch (cleanupError) {
+				console.error('Mailbox list rollback failed', { count: accountRows.length, error: cleanupError.message });
+			}
+			await rollbackRouting(c, changes, 'insert-list');
+			throw error;
+		}
+		return accountRows;
 	},
 
 	async physicsDeleteByUserIds(c, userIds) {
-		await emailService.physicsDeleteUserIds(c, userIds);
-		await orm(c).delete(account).where(inArray(account.userId,userIds)).run();
+		const accountRows = await orm(c).select({ email: account.email }).from(account)
+			.where(inArray(account.userId, userIds)).all();
+		const changes = [];
+		try {
+			await removeEmailRoutes(c, accountRows.map(row => row.email), changes);
+			await emailService.physicsDeleteUserIds(c, userIds);
+			await orm(c).delete(account).where(inArray(account.userId,userIds)).run();
+		} catch (error) {
+			await rollbackRouting(c, changes, 'delete-users');
+			throw error;
+		}
 	},
 
 	async selectUserAccountCountList(c, userIds, del = isDel.NORMAL) {
@@ -221,11 +269,27 @@ const accountService = {
 	},
 
 	async restoreByEmail(c, email) {
-		await orm(c).update(account).set({isDel: isDel.NORMAL}).where(eq(account.email, email)).run();
+		const changes = [];
+		try {
+			await ensureEmailRoute(c, email, changes);
+			await orm(c).update(account).set({isDel: isDel.NORMAL}).where(eq(account.email, email)).run();
+		} catch (error) {
+			await rollbackRouting(c, changes, 'restore-email');
+			throw error;
+		}
 	},
 
 	async restoreByUserId(c, userId) {
-		await orm(c).update(account).set({isDel: isDel.NORMAL}).where(eq(account.userId, userId)).run();
+		const accountRows = await orm(c).select({ email: account.email }).from(account)
+			.where(eq(account.userId, userId)).all();
+		const changes = [];
+		try {
+			await ensureEmailRoutes(c, accountRows.map(row => row.email), changes);
+			await orm(c).update(account).set({isDel: isDel.NORMAL}).where(eq(account.userId, userId)).run();
+		} catch (error) {
+			await rollbackRouting(c, changes, 'restore-user');
+			throw error;
+		}
 	},
 
 	async setName(c, params, userId) {
@@ -261,8 +325,17 @@ const accountService = {
 
 	async physicsDelete(c, params) {
 		const { accountId } = params
-		await emailService.physicsDeleteByAccountId(c, accountId)
-		await orm(c).delete(account).where(eq(account.accountId, accountId)).run();
+		const accountRow = await orm(c).select({ email: account.email }).from(account)
+			.where(eq(account.accountId, accountId)).get();
+		const changes = [];
+		try {
+			if (accountRow) await removeEmailRoute(c, accountRow.email, changes);
+			await emailService.physicsDeleteByAccountId(c, accountId)
+			await orm(c).delete(account).where(eq(account.accountId, accountId)).run();
+		} catch (error) {
+			await rollbackRouting(c, changes, 'delete-account');
+			throw error;
+		}
 	},
 
 	async setAllReceive(c, params, userId) {
