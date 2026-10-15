@@ -15,8 +15,10 @@ describe('company mailbox login', () => {
     privateKey = await crypto.subtle.exportKey('jwk', pair.privateKey);
     c = { env: { OIDC_ISSUER_URL: 'https://identity.test', OIDC_CLIENT_ID: 'cloud-mail', OIDC_CLIENT_SECRET: 'secret',
       OIDC_REDIRECT_URI: 'https://mail.test/api/oauth/company/callback',
+      OIDC_REDIRECT_URI_ALT: 'https://mail-alt.test/api/oauth/company/callback',
       kv: { put: async (key, value) => entries.set(key, value), get: async (key, options) => options?.type === 'json' ? JSON.parse(entries.get(key) || 'null') : entries.get(key), delete: async key => entries.delete(key) },
-      db: { prepare: vi.fn(() => ({ bind: vi.fn(subject => ({ first: async () => subject === 'employee-1' ? { userId: 7, status: mode === 'disabled' ? 'DISABLED' : 'ACTIVE' } : null })) })) } } };
+      db: { prepare: vi.fn(() => ({ bind: vi.fn(subject => ({ first: async () => subject === 'employee-1' ? { userId: 7, status: mode === 'disabled' ? 'DISABLED' : 'ACTIVE' } : null })) })) } },
+      req: { url: 'https://mail.test/api/oauth/company/login' } };
     userService.selectByIdIncludeDel.mockResolvedValue({ userId: 7, email: 'existing-mailbox@example.test' });
     loginService.login.mockResolvedValue('existing-login-token');
     vi.stubGlobal('fetch', vi.fn(async (url, init) => {
@@ -42,6 +44,14 @@ describe('company mailbox login', () => {
     expect(form.get('client_secret')).toBe('secret');
     expect(form.get('code_verifier')).toBeTruthy();
     await expect(completeCompanyLogin(c, query, begun.state)).rejects.toMatchObject({ code: 401 });
+  });
+  it('uses the callback belonging to the requested portal', async () => {
+    c.req.url = 'https://mail-alt.test/api/oauth/company/login';
+    const { begun, query } = await flow();
+    expect(new URL(begun.url).searchParams.get('redirect_uri')).toBe('https://mail-alt.test/api/oauth/company/callback');
+    c.req.url = 'https://mail-alt.test/api/oauth/company/callback';
+    await completeCompanyLogin(c, query, begun.state);
+    expect(form.get('redirect_uri')).toBe('https://mail-alt.test/api/oauth/company/callback');
   });
   it('rejects a browser state mismatch', async () => {
     const { query } = await flow();

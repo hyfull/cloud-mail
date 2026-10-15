@@ -7,6 +7,23 @@ export function companyLoginConfigured(c) {
   return Boolean(c.env.OIDC_ISSUER_URL && c.env.OIDC_CLIENT_ID && c.env.OIDC_CLIENT_SECRET && c.env.OIDC_REDIRECT_URI);
 }
 
+export function companyRedirectUris(c) {
+  try {
+    return [c.env.OIDC_REDIRECT_URI, c.env.OIDC_REDIRECT_URI_ALT]
+      .filter(Boolean)
+      .map(value => new URL(value));
+  } catch {
+    throw new BizError('公司身份回调地址配置无效', 503);
+  }
+}
+
+export function companyRedirectUri(c) {
+  const origin = new URL(c.req.url).origin;
+  const redirect = companyRedirectUris(c).find(value => value.origin === origin);
+  if (!redirect) throw new BizError('请求来源无效', 403);
+  return redirect.href;
+}
+
 export function randomTicket() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
@@ -28,7 +45,7 @@ async function providerJson(url, init) {
 async function discovery(c) {
   if (!companyLoginConfigured(c)) throw new BizError('公司登录尚未配置', 503);
   const issuer = c.env.OIDC_ISSUER_URL;
-  if (!issuer.startsWith('https://') || !c.env.OIDC_REDIRECT_URI.startsWith('https://')) throw new BizError('公司身份地址必须使用 HTTPS', 503);
+  if (!issuer.startsWith('https://') || companyRedirectUris(c).some(value => value.protocol !== 'https:')) throw new BizError('公司身份地址必须使用 HTTPS', 503);
   const document = await providerJson(`${issuer}/.well-known/openid-configuration`);
   if (document.issuer !== issuer || ['authorization_endpoint', 'token_endpoint', 'jwks_uri'].some(key => typeof document[key] !== 'string')) throw new BizError('公司身份服务配置不匹配', 503);
   return document;
@@ -36,12 +53,13 @@ async function discovery(c) {
 
 export async function beginCompanyLogin(c) {
   const document = await discovery(c);
+  const redirectUri = companyRedirectUri(c);
   const state = randomTicket(), nonce = randomTicket(), verifier = randomTicket();
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
   const challenge = btoa(String.fromCharCode(...digest)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
-  await c.env.kv.put(`company-flow:${state}`, JSON.stringify({ nonce, verifier, expiresAt: Date.now() + 600000 }), { expirationTtl: 600 });
+  await c.env.kv.put(`company-flow:${state}`, JSON.stringify({ nonce, verifier, redirectUri, expiresAt: Date.now() + 600000 }), { expirationTtl: 600 });
   const target = new URL(document.authorization_endpoint);
-  target.search = new URLSearchParams({ client_id: c.env.OIDC_CLIENT_ID, redirect_uri: c.env.OIDC_REDIRECT_URI,
+  target.search = new URLSearchParams({ client_id: c.env.OIDC_CLIENT_ID, redirect_uri: redirectUri,
     response_type: 'code', scope: 'openid profile email', state, nonce, ui_locales: 'zh-CN',
     code_challenge: challenge, code_challenge_method: 'S256' }).toString();
   return { state, url: target.href };
@@ -52,11 +70,12 @@ export async function completeCompanyLogin(c, query, browserState) {
   if (!state || state !== browserState || !query.get('code') || query.has('error')) throw new BizError('公司登录状态校验失败', 401);
   const flow = await c.env.kv.get(`company-flow:${state}`, { type: 'json' });
   if (!flow || flow.expiresAt <= Date.now()) throw new BizError('公司登录流程已过期', 401);
+  if (flow.redirectUri !== companyRedirectUri(c)) throw new BizError('公司登录状态校验失败', 401);
   await c.env.kv.delete(`company-flow:${state}`);
   const document = await discovery(c);
   const tokens = await providerJson(document.token_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'authorization_code', code: query.get('code'), client_id: c.env.OIDC_CLIENT_ID,
-      client_secret: c.env.OIDC_CLIENT_SECRET, code_verifier: flow.verifier, redirect_uri: c.env.OIDC_REDIRECT_URI }) });
+      client_secret: c.env.OIDC_CLIENT_SECRET, code_verifier: flow.verifier, redirect_uri: flow.redirectUri }) });
   const jwks = await providerJson(document.jwks_uri);
   let identity;
   try {

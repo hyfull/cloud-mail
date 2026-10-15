@@ -16,6 +16,7 @@ jobs:
     env:
       NAME: ${{ secrets.NAME || vars.NAME || 'cloud-mail' }}
       CUSTOM_DOMAIN: ${{ secrets.CUSTOM_DOMAIN || vars.CUSTOM_DOMAIN }}
+      SECONDARY_CUSTOM_DOMAIN: ${{ vars.SECONDARY_CUSTOM_DOMAIN || 'mail.huayifull.com' }}
       DOMAIN: ${{ secrets.DOMAIN || vars.DOMAIN }}
       ADMIN: ${{ secrets.ADMIN || vars.ADMIN }}
       JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
@@ -38,6 +39,7 @@ jobs:
       OIDC_ISSUER_URL: ${{ vars.OIDC_ISSUER_URL || '' }}
       OIDC_CLIENT_ID: ${{ vars.OIDC_CLIENT_ID || '' }}
       OIDC_REDIRECT_URI: ${{ vars.OIDC_REDIRECT_URI || '' }}
+      OIDC_REDIRECT_URI_ALT: ${{ vars.OIDC_REDIRECT_URI_ALT || 'https://mail.huayifull.com/api/oauth/company/callback' }}
       OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET || '' }}
 
 
@@ -127,6 +129,8 @@ jobs:
           
           if [ -z "$CUSTOM_DOMAIN" ]; then
             sed -i '/\[\[routes\]\]/,/^$/d' "$CONFIG_FILE"
+          elif [ -z "$SECONDARY_CUSTOM_DOMAIN" ]; then
+            sed -i '/pattern = "${SECONDARY_CUSTOM_DOMAIN}"/,+1d' "$CONFIG_FILE"
           fi
           
           if [ "$(printf '%s' "$CLOUDFLARE_EMAIL" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
@@ -139,6 +143,7 @@ jobs:
 
           sed -i "s|\${NAME}|${NAME}|g" "$CONFIG_FILE"
           sed -i "s|\${CUSTOM_DOMAIN}|${CUSTOM_DOMAIN}|g" "$CONFIG_FILE"
+          sed -i "s|\${SECONDARY_CUSTOM_DOMAIN}|${SECONDARY_CUSTOM_DOMAIN}|g" "$CONFIG_FILE"
           sed -i "s|\"\${DOMAIN}\"|${DOMAIN}|g" "$CONFIG_FILE"
           sed -i "s|\${ADMIN}|${ADMIN}|g" "$CONFIG_FILE"
           sed -i "s|\${STORE_MAILBOX_OWNER}|${STORE_MAILBOX_OWNER}|g" "$CONFIG_FILE"
@@ -154,6 +159,7 @@ jobs:
           sed -i "s|\${OIDC_ISSUER_URL}|${OIDC_ISSUER_URL}|g" "$CONFIG_FILE"
           sed -i "s|\${OIDC_CLIENT_ID}|${OIDC_CLIENT_ID}|g" "$CONFIG_FILE"
           sed -i "s|\${OIDC_REDIRECT_URI}|${OIDC_REDIRECT_URI}|g" "$CONFIG_FILE"
+          sed -i "s|\${OIDC_REDIRECT_URI_ALT}|${OIDC_REDIRECT_URI_ALT}|g" "$CONFIG_FILE"
           sed -i "s|\${LINUXDO_CLIENT_ID}|${LINUXDO_CLIENT_ID}|g" "$CONFIG_FILE"
           sed -i "s|\${LINUXDO_CLIENT_SECRET}|${LINUXDO_CLIENT_SECRET}|g" "$CONFIG_FILE"
           sed -i "s|\${LINUXDO_CALLBACK_URL}|${LINUXDO_CALLBACK_URL}|g" "$CONFIG_FILE"

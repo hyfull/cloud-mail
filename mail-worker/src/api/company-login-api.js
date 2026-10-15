@@ -2,7 +2,7 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import app from '../hono/hono';
 import result from '../model/result';
 import BizError from '../error/biz-error';
-import { beginCompanyLogin, completeCompanyLogin, companyLoginConfigured, randomTicket } from '../service/company-login-service';
+import { beginCompanyLogin, completeCompanyLogin, companyLoginConfigured, companyRedirectUris, randomTicket } from '../service/company-login-service';
 
 const flowCookie = 'cloud_mail_company_flow', exchangeCookie = 'cloud_mail_company_exchange';
 const options = { httpOnly: true, secure: true, sameSite: 'Lax', path: '/api/oauth/company' };
@@ -27,8 +27,8 @@ app.get('/oauth/company/callback', async c => {
   }
 });
 app.post('/oauth/company/exchange', async c => {
-  const origin = new URL(c.env.OIDC_REDIRECT_URI).origin;
-  if (c.req.header('Origin') !== origin) throw new BizError('请求来源无效', 403);
+  const origins = companyRedirectUris(c).map(value => value.origin);
+  if (!origins.includes(c.req.header('Origin'))) throw new BizError('请求来源无效', 403);
   const ticket = getCookie(c, exchangeCookie);
   deleteCookie(c, exchangeCookie, options);
   if (!ticket) throw new BizError('公司登录已过期，请重试', 401);
