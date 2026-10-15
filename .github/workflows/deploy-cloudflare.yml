@@ -32,7 +32,6 @@ jobs:
       EMAIL_ROUTING_DOMAIN: ${{ vars.EMAIL_ROUTING_DOMAIN || 'email.huayifull.com' }}
       EMAIL_ROUTING_ZONE_ID: ${{ vars.EMAIL_ROUTING_ZONE_ID || 'ab0a44fa1ff0c6059fddb8a8d4221bc9' }}
       EMAIL_ROUTING_WORKER: ${{ vars.EMAIL_ROUTING_WORKER || 'cloud-mail' }}
-      EMAIL_ROUTING_API_TOKEN: ${{ secrets.EMAIL_ROUTING_API_TOKEN || '' }}
       IDENTITY_SYNC_SECRET: ${{ secrets.IDENTITY_SYNC_SECRET || '' }}
       STORE_MAILBOX_SECRET: ${{ secrets.STORE_MAILBOX_SECRET || '' }}
       STORE_MAILBOX_OWNER: ${{ vars.STORE_MAILBOX_OWNER || 'shein@huayimail.com' }}
@@ -111,7 +110,7 @@ jobs:
             echo "::warning:: CUSTOM_DOMAIN variable is not set."
           fi
 
-          if [ -n "$EMAIL_ROUTING_DOMAIN" ] && { [ -z "$EMAIL_ROUTING_ZONE_ID" ] || [ -z "$EMAIL_ROUTING_WORKER" ] || [ -z "$EMAIL_ROUTING_API_TOKEN" ]; }; then
+          if [ -n "$EMAIL_ROUTING_DOMAIN" ] && { [ -z "$EMAIL_ROUTING_ZONE_ID" ] || [ -z "$EMAIL_ROUTING_WORKER" ]; }; then
             echo "❌ Email routing synchronization variables or secret are incomplete."
             exit 1
           fi
@@ -272,9 +271,6 @@ jobs:
           printf '%s' "$IDENTITY_SYNC_SECRET" | pnpm wrangler secret put IDENTITY_SYNC_SECRET -c wrangler-action.toml
           if [ -n "$STORE_MAILBOX_SECRET" ]; then
             printf '%s' "$STORE_MAILBOX_SECRET" | pnpm wrangler secret put STORE_MAILBOX_SECRET -c wrangler-action.toml
-          fi
-          if [ -n "$EMAIL_ROUTING_DOMAIN" ]; then
-            printf '%s' "$EMAIL_ROUTING_API_TOKEN" | pnpm wrangler secret put EMAIL_ROUTING_API_TOKEN -c wrangler-action.toml
           fi
           if [ -z "$OIDC_CLIENT_SECRET" ]; then
             echo "❌ OIDC_CLIENT_SECRET is required."

@@ -56,7 +56,9 @@ Cloudflare Worker 需要配置：
 `huayimail.com` 继续使用原有 catch-all，不受影响。批量导入或同步失败时会撤销本次数据库写入和已完成的路由变更。
 
 部署变量为 `EMAIL_ROUTING_DOMAIN`、`EMAIL_ROUTING_ZONE_ID`、`EMAIL_ROUTING_WORKER`，运行时 Secret 为
-`EMAIL_ROUTING_API_TOKEN`。令牌只需授予目标区域的 `Email Routing Rules Write` 权限。
+`EMAIL_ROUTING_API_TOKEN`。首次部署后手动运行 `Provision email routing token` 工作流；它使用仓库现有的
+Cloudflare 管理令牌创建仅限目标区域、仅含 `Email Routing Rules Write` 权限的账户专用令牌，并直接写入
+Worker Secret。后续常规部署会保留该 Secret。
 
 ## 店铺邮箱自动开通
 
