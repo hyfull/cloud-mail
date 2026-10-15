@@ -60,9 +60,10 @@ Cloudflare Worker 需要配置：
 Cloudflare 管理令牌创建仅限目标区域、仅含 `Email Routing Rules Write` 权限的账户专用令牌，并直接写入
 Worker Secret。后续常规部署会保留该 Secret。
 
-网页入口以 `mail.huayifull.com` 为公司主入口，原 `mail.huayimail.com` 暂时保留；两个入口指向同一
-Worker，并分别使用各自域名的公司登录回调。邮箱地址仍按 `@huayimail.com` 和
-`@email.huayifull.com` 两个邮件域并行存在。
+网页入口以 `mail.huayifull.com` 为公司主入口，原 `mail.huayimail.com` 仅在迁移期保留；两个入口
+当前指向同一 Worker，并分别使用各自域名的公司登录回调。邮箱地址暂按 `@huayimail.com` 和
+`@email.huayifull.com` 两个邮件域并行存在。账号、邮件数据和外部绑定完成迁移及验证后，下线
+`mail.huayimail.com`，不再作为系统入口。
 
 ## 店铺邮箱自动开通
 
